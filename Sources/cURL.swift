@@ -36,6 +36,9 @@ public class CURL {
 	var headerBytes = [UInt8]()
 	var bodyBytes = [UInt8]()
 
+    public var uploadBodyBytes = [UInt8]()
+    var bodyBytesUploaded: Int = 0
+
 	/// The CURLINFO_RESPONSE_CODE for the last operation.
 	public var responseCode: Int {
 		return self.getInfo(CURLINFO_RESPONSE_CODE).0
@@ -112,16 +115,47 @@ public class CURL {
 			return 0
 		}
 		let _ = setOption(CURLOPT_WRITEFUNCTION, f: writeFunc)
-
+        
 		let readFunc: curl_func = {
-			(a, b, c, p) -> Int in
+			(a, size, num, p) -> Int in
 
-			// !FIX!
+            let crl = Unmanaged<CURL>.fromOpaque(p!).takeUnretainedValue()
 
-//			let crl = Unmanaged<CURL>.fromOpaque(COpaquePointer(p)).takeUnretainedValue()
-			return 0
+            if size == 0 || num == 0 || size*num < 1 {
+                crl.bodyBytesUploaded = 0
+                return 0
+            }
+
+            if crl.bodyBytesUploaded < crl.uploadBodyBytes.count {
+                
+                let maxLen = size*num
+                let availableBytes = crl.uploadBodyBytes.count - crl.bodyBytesUploaded
+                
+                let actualLen: Int
+                
+                if maxLen > availableBytes {
+                    actualLen = availableBytes
+                } else {
+                    actualLen = maxLen
+                }
+                
+                let data = crl.uploadBodyBytes[crl.bodyBytesUploaded..<crl.bodyBytesUploaded+actualLen]
+                
+                _ = data.withUnsafeBytes({ (rawData /*provides UnsafeRawBufferPointer*/) -> UnsafeMutableRawPointer in
+                    return memcpy(a, rawData.baseAddress! /*expected UnsafeRawPointer*/, actualLen)
+                })
+                
+                crl.bodyBytesUploaded += actualLen
+                
+                return actualLen
+                
+                
+            } else {
+                return 0
+            }
+            
 		}
-		_ = setOption(CURLOPT_READFUNCTION, f: readFunc)
+		let _ = setOption(CURLOPT_READFUNCTION, f: readFunc)
 
 	}
 
@@ -136,6 +170,7 @@ public class CURL {
         }
         self.slists = UnsafeMutablePointer<curl_slist>(nil as OpaquePointer?)
         curl_easy_reset(curl)
+        bodyBytesUploaded = 0
         setCurlOpts()
 	}
 
@@ -329,25 +364,26 @@ public class CURL {
         guard let curl = self.curl else {
             return CURLE_FAILED_INIT
         }
-		switch(option.rawValue) {
-		case CURLOPT_HTTP200ALIASES.rawValue,
-			CURLOPT_HTTPHEADER.rawValue,
-			CURLOPT_POSTQUOTE.rawValue,
-			CURLOPT_PREQUOTE.rawValue,
-			CURLOPT_QUOTE.rawValue,
-			CURLOPT_MAIL_FROM.rawValue,
-			CURLOPT_MAIL_RCPT.rawValue:
-            let slists = curl_slist_append(self.slists, s)
-			guard slists != nil else {
-				return CURLE_OUT_OF_MEMORY
-			}
-            self.slists = slists
-			return curl_easy_setopt_slist(curl, option, self.slists)
-		default:
-			()
-		}
-		return curl_easy_setopt_cstr(self.curl!, option, s)
+		return curl_easy_setopt_cstr(curl, option, s)
 	}
+    
+    /// Sets the slist option value.
+    @discardableResult
+    public func setOption(_ option: CURLoption, array: [String]) -> CURLcode {
+        guard let curl = self.curl else {
+            return CURLE_FAILED_INIT
+        }
+        
+        var slist = UnsafeMutablePointer<curl_slist>(nil as OpaquePointer?)
+        
+        for value in array {
+            slist = curl_slist_append(slist, value)
+        }
+        
+        return curl_easy_setopt_slist(curl, option, slist)
+        
+    }
+
 
 	/// Cleanup and close the CURL request.
     public func close() {
