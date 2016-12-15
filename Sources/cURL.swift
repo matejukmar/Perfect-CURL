@@ -369,14 +369,14 @@ public class CURL {
     
     /// Sets the slist option value.
     @discardableResult
-    public func setOption(_ option: CURLoption, array: [String]) -> CURLcode {
+    public func setOption(_ option: CURLoption, list: [String]) -> CURLcode {
         guard let curl = self.curl else {
             return CURLE_FAILED_INIT
         }
         
         var slist = UnsafeMutablePointer<curl_slist>(nil as OpaquePointer?)
         
-        for value in array {
+        for value in list {
             slist = curl_slist_append(slist, value)
         }
         
