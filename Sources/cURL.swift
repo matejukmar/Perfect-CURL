@@ -142,7 +142,7 @@ public class CURL {
                 let data = crl.uploadBodyBytes[crl.bodyBytesUploaded..<crl.bodyBytesUploaded+actualLen]
                 
                 _ = data.withUnsafeBytes({ (rawData /*provides UnsafeRawBufferPointer*/) -> UnsafeMutableRawPointer in
-                    return memcpy(a, rawData.baseAddress! /*expected UnsafeRawPointer*/, actualLen)
+                    return memcpy(a!, rawData.baseAddress! /*expected UnsafeRawPointer*/, actualLen)
                 })
                 
                 crl.bodyBytesUploaded += actualLen
